@@ -180,6 +180,7 @@ export interface PluginWebSocketRouteRecord {
 export interface PluginRpcHandler {
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
+  operatorOnly: boolean;
   handler: (input: unknown) => unknown;
 }
 
@@ -227,6 +228,7 @@ interface PluginCliRegistrationRecord {
   name: string;
   summary: string;
   commands: PluginCliCommandInfo[];
+  operatorArgv: readonly string[];
   run: (
     argv: string[],
     ctx: PluginCliContext,
@@ -929,6 +931,7 @@ export function createPluginApi(options: {
           {
             inputSchema: methodContract.input,
             outputSchema: methodContract.output,
+            operatorOnly: methodContract.operatorOnly === true,
             handler,
           },
         ]);
@@ -1291,10 +1294,22 @@ export function createPluginApi(options: {
           `cli command "${name}" must provide a run(argv, ctx) function`,
         );
       }
+      const operatorArgv = registration.experimental_operatorArgv ?? [];
+      if (
+        !Array.isArray(operatorArgv) ||
+        operatorArgv.some(
+          (prefix) => typeof prefix !== "string" || prefix.trim().length === 0,
+        )
+      ) {
+        throw new Error(
+          `cli command "${name}" experimental_operatorArgv must be an array of non-empty argv prefixes`,
+        );
+      }
       cliRecord.registration = {
         name,
         summary: registration.summary,
         commands: validatedCommands,
+        operatorArgv,
         run: registration.run.bind(registration),
       };
     },

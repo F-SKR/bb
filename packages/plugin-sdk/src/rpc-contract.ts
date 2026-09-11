@@ -14,6 +14,7 @@ export type PluginRpcErrorCode =
   | "handler_error"
   | "invalid_output"
   | "non_json_result"
+  | "operator_auth_required"
   | "unknown_method";
 
 /** Structured RPC failure returned as `{ ok: false, error }`. */
@@ -67,6 +68,13 @@ export interface PluginRpcMethodContract<
 > {
   readonly input: InputSchema;
   readonly output: OutputSchema;
+  /**
+   * Reserve the method for the authenticated bb operator. The host verifies
+   * the `x-bb-operator-token` header against the server's operator token and
+   * refuses every other caller with 403 `operator_auth_required` before the
+   * handler runs. Omit it for methods every caller may invoke.
+   */
+  readonly operatorOnly?: true;
 }
 
 export type PluginRpcContract = Readonly<

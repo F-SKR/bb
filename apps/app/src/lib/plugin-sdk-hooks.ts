@@ -38,6 +38,10 @@ import {
   usePluginComposerHostDraft,
 } from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
+import {
+  getStoredOperatorToken,
+  OPERATOR_TOKEN_HEADER,
+} from "@/lib/operator-token";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -137,11 +141,18 @@ export async function callPluginRpc(
   input?: unknown,
 ): Promise<unknown> {
   const serializedInput = serializePluginRpcInput(input ?? null);
+  const operatorToken = getStoredOperatorToken();
   const response = await fetchImpl(
     `/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/${encodeURIComponent(method)}`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers:
+        operatorToken.length > 0
+          ? {
+              "content-type": "application/json",
+              [OPERATOR_TOKEN_HEADER]: operatorToken,
+            }
+          : { "content-type": "application/json" },
       body: serializedInput,
     },
   );

@@ -208,6 +208,7 @@ export interface FakeCliRecord {
   name: string;
   summary: string;
   commands: PluginCliCommandInfo[];
+  operatorArgv: readonly string[];
   run: (
     argv: string[],
     ctx: PluginCliContext,
@@ -365,17 +366,27 @@ export interface FakePluginBehaviorDrivers {
   /**
    * Invoke a registered rpc method with host semantics: input/output schemas,
    * strict JSON result normalization, and structured failure codes. Rejects
-   * with the same message/code/issues the frontend client surfaces.
+   * with the same message/code/issues the frontend client surfaces. Methods
+   * whose contract declares `operatorOnly: true` refuse with
+   * `operator_auth_required` unless `asOperator` is true, mirroring the
+   * host's operator-token gate.
    */
-  callRpc(method: string, input?: unknown): Promise<unknown>;
+  callRpc(
+    method: string,
+    input?: unknown,
+    options?: { asOperator?: boolean },
+  ): Promise<unknown>;
   /**
    * Invoke the plugin's CLI command with host semantics: the result's
    * exitCode must be a number, stdout/stderr default to "", and a throwing
-   * run() becomes `{ exitCode: 1, stderr: "bb <name> failed: …" }`.
+   * run() becomes `{ exitCode: 1, stderr: "bb <name> failed: …" }`. Argv
+   * reserved by `experimental_operatorArgv` refuses unless `asOperator` is
+   * true, mirroring the host's operator-token gate.
    */
   runCli(
     argv: string[],
     ctx?: PluginCliContext,
+    options?: { asOperator?: boolean },
   ): Promise<PluginCliExecutionResult>;
   /**
    * Dispatch a request to a registered `bb.http` route (exact method+path
@@ -604,6 +615,7 @@ function jsonRoundTrip(value: unknown, what: string): unknown {
 interface FakeRpcRecord {
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
+  operatorOnly: boolean;
   handler: (input: never) => unknown;
 }
 
@@ -1313,6 +1325,7 @@ function createFakePluginHostInternal(
           {
             inputSchema: methodContract.input,
             outputSchema: methodContract.output,
+            operatorOnly: methodContract.operatorOnly === true,
             handler: handler as (input: never) => unknown,
           },
         ]);
@@ -1435,10 +1448,22 @@ function createFakePluginHostInternal(
           `cli command "${name}" must provide a run(argv, ctx) function`,
         );
       }
+      const operatorArgv = registration.experimental_operatorArgv ?? [];
+      if (
+        !Array.isArray(operatorArgv) ||
+        operatorArgv.some(
+          (prefix) => typeof prefix !== "string" || prefix.trim().length === 0,
+        )
+      ) {
+        throw new Error(
+          `cli command "${name}" experimental_operatorArgv must be an array of non-empty argv prefixes`,
+        );
+      }
       cliRecord.registration = {
         name,
         summary: registration.summary,
         commands: validatedCommands,
+        operatorArgv,
         run: registration.run.bind(registration),
       };
       const warning = pluginCliCollisionWarning(pluginId, name);
@@ -2356,12 +2381,19 @@ function createFakePluginHostInternal(
       await setSettingsValues(values);
     },
 
-    async callRpc(method, input) {
+    async callRpc(method, input, options) {
       const record = rpcHandlers.get(method);
       if (!record) {
         return throwRpcError({
           code: "unknown_method",
           message: `plugin "${pluginId}" has no rpc method "${method}"`,
+        });
+      }
+      if (record.operatorOnly && options?.asOperator !== true) {
+        return throwRpcError({
+          code: "operator_auth_required",
+          message:
+            "operator authentication required — this rpc method is reserved for the bb operator (x-bb-operator-token)",
         });
       }
       const parsedInput =
@@ -2390,10 +2422,30 @@ function createFakePluginHostInternal(
       return normalizeRpcJsonResult(validatedOutput);
     },
 
-    async runCli(argv, ctx = {}) {
+    async runCli(argv, ctx = {}, options) {
       const registration = cliRecord.registration;
       if (!registration) {
         throw new Error(`plugin "${pluginId}" registers no CLI command`);
+      }
+      if (
+        options?.asOperator !== true &&
+        registration.operatorArgv.some((prefix) => {
+          const segments = prefix.trim().split(/\s+/u);
+          return (
+            segments.length > 0 &&
+            segments.every((segment, index) => argv[index] === segment)
+          );
+        })
+      ) {
+        return enforcePluginCliOutputLimit(
+          {
+            exitCode: 1,
+            stdout: "",
+            stderr:
+              "operator authentication required — this invocation is reserved for the bb operator (x-bb-operator-token)",
+          },
+          argv.includes("--json"),
+        );
       }
       try {
         const result = await registration.run(argv, ctx);

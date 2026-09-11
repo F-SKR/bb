@@ -1086,12 +1086,16 @@ describe("Tasks RPC domain API", () => {
       builtin: true,
     });
 
-    const updated = await harness.callRpc("updatePreset", {
-      presetId: preset.id,
-      name: "Renamed",
-      modelId: "claude-sonnet-6",
-      permissionMode: "accept-edits",
-    });
+    const updated = await harness.callRpc(
+      "updatePreset",
+      {
+        presetId: preset.id,
+        name: "Renamed",
+        modelId: "claude-sonnet-6",
+        permissionMode: "accept-edits",
+      },
+      { asOperator: true },
+    );
     expect(updated.preset).toMatchObject({
       name: "Renamed",
       modelId: "claude-sonnet-6",
@@ -1099,7 +1103,11 @@ describe("Tasks RPC domain API", () => {
       builtin: true,
     });
     await expect(
-      harness.callRpc("deletePreset", { presetId: preset.id }),
+      harness.callRpc(
+        "deletePreset",
+        { presetId: preset.id },
+        { asOperator: true },
+      ),
     ).resolves.toEqual({ deleted: true });
     expect(store.tasks.getPreset(preset.id)).toBeUndefined();
 

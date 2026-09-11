@@ -603,6 +603,7 @@ export const tasksRpcContract = defineRpcContract({
       .strict(),
   },
   createPreset: {
+    operatorOnly: true,
     input: z
       .object({
         name: nonBlankStringSchema,
@@ -644,10 +645,12 @@ export const tasksRpcContract = defineRpcContract({
   updatePreset: {
     input: updatePresetInputSchema,
     output: z.object({ preset: presetSchema }).strict(),
+    operatorOnly: true,
   },
   deletePreset: {
     input: z.object({ presetId: idSchema }).strict(),
     output: z.object({ deleted: z.boolean() }).strict(),
+    operatorOnly: true,
   },
   listPresets: {
     input: z.null(),

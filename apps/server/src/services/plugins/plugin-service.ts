@@ -324,6 +324,7 @@ export interface PluginService {
     options?: { rotate?: boolean },
   ): Promise<string | undefined>;
   listCliContributions(): PluginCliContribution[];
+  isOperatorOnlyCliArgv(id: string, argv: string[]): boolean;
   runCliCommand(
     id: string,
     argv: string[],
@@ -2192,6 +2193,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     listCliContributions() {
       return cliContributions();
+    },
+
+    isOperatorOnlyCliArgv(id, argv) {
+      const registration = loaded.get(id)?.handle.cli.registration;
+      if (!registration) return false;
+      return registration.operatorArgv.some((prefix) => {
+        const segments = prefix.trim().split(/\s+/u);
+        return (
+          segments.length > 0 &&
+          segments.every((segment, index) => argv[index] === segment)
+        );
+      });
     },
 
     async runCliCommand(id, argv, ctx) {

@@ -283,6 +283,43 @@ newline and the submit button sends.
 iPadOS WebKit additionally preserves the Enter and Command+Enter shortcuts
 above for a connected Magic Keyboard.
 
+## Operator access
+
+Some plugin surfaces are reserved for the human operator. Plugins declare
+them with `operatorOnly: true` on an rpc contract method (for example the
+Tasks plugin's `createPreset`, `updatePreset`, and `deletePreset`) or with
+`experimental_operatorArgv` argv prefixes on its `bb` command (for example
+`bb tasks preset create|update|delete`). The bb server verifies every such
+request against the server's operator token and refuses all other callers
+with 403 `operator_auth_required` before any plugin code runs. Reading
+presets and dispatching work with an existing preset stay open to agents,
+plugins, and the CLI.
+
+The server creates the token on first start as `operator-token` inside its
+data dir (a 32-byte hex secret, file mode 0600) and never serves it over any
+endpoint. Present it with:
+
+- The bb app: Settings → Operator access stores it in browser localStorage
+  under `bb.operatorToken`; plugin rpc calls then carry it automatically.
+- The `bb` CLI: export `BB_OPERATOR_TOKEN` in your own shell before running
+  an operator-only command.
+
+Do not put `BB_OPERATOR_TOKEN` in global shell profiles, thread environment
+providers, or any other configuration that agent sessions inherit: an
+exported token is a reusable credential. Rotation is editing the
+`operator-token` file and restarting the server (the token is read once per
+server run); rotate it whenever it may have leaked. Every allowed and refused
+operator-only invocation is appended to `operator-audit.jsonl` in the data
+dir with the authenticated actor, time, surface, action, and attempted
+fields — never the token itself.
+
+The token authenticates a caller that can present the secret; it does not
+elevate Unix identity. Any process running as the same user as the server
+can read the data dir, so a same-user process that goes looking for the
+secret can find it. The boundary this draws is between sanctioned paths
+(app, CLI, rpc, plugins, agent sessions) and everything that should not
+change operator configuration; it is not an operating-system sandbox.
+
 ## Keyboard Shortcuts
 
 `Mod+Shift+P` opens the quick palette: type to filter, then run a command with

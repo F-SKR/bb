@@ -581,8 +581,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Be invoked the same way by a person at a terminal and by an agent mid-task",
           "Receive the thread and project it was invoked from, when bb knows them",
           "Make the plugin usable from scripts and automations, not only from the UI",
+          "Reserve argv prefixes for the authenticated operator alone — bb refuses every other caller before the command runs",
         ],
-        apiSymbols: ["PluginCli"],
+        apiSymbols: ["PluginCli", "PluginCliRegistration"],
         firstParty: [
           "Automations",
           "Custom instructions",
@@ -651,9 +652,11 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Call its server from its UI over RPC, with arguments and results checked against a schema",
           "Serve exact-path HTTP and WebSocket routes other systems can call, webhooks included",
           "Push messages to every open bb window, so the UI does not have to poll",
+          "Mark an rpc method operator-only, so bb refuses every caller that does not carry the server's operator token",
         ],
         apiSymbols: [
           "PluginRpc",
+          "PluginRpcMethodContract",
           "PluginHttp",
           "PluginRealtime",
           "ExperimentalPluginWebSocket",

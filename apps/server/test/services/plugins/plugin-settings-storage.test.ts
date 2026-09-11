@@ -288,7 +288,11 @@ describe("plugin settings + storage", () => {
       ).rejects.toThrow("lowercase letters only");
 
       const app = new Hono();
-      registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
+      registerPluginRoutes(
+        app,
+        { config: { serverPort: 3334, dataDir: workDir }, db, logger: testLogger },
+        service,
+      );
       const got = await app.request("/plugins/self-configuring/settings");
       const body = (await got.json()) as {
         schema: Record<string, Record<string, unknown>>;
@@ -347,7 +351,11 @@ describe("plugin settings + storage", () => {
     it("serves schema+values over the routes; PUT validates with 400s", async () => {
       await installConfigurable();
       const app = new Hono();
-      registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
+      registerPluginRoutes(
+        app,
+        { config: { serverPort: 3334, dataDir: workDir }, db, logger: testLogger },
+        service,
+      );
 
       const got = await app.request("/plugins/configurable/settings");
       expect(got.status).toBe(200);

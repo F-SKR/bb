@@ -1655,7 +1655,13 @@ export function readRpcMethodContract(
       `rpc method "${method}" output must be a Standard Schema v1 validator`,
     );
   }
-  return { input, output };
+  const operatorOnly = Reflect.get(value, "operatorOnly");
+  if (operatorOnly !== undefined && operatorOnly !== true) {
+    throw new Error(
+      `rpc method "${method}" operatorOnly must be true when present`,
+    );
+  }
+  return operatorOnly === true ? { input, output, operatorOnly } : { input, output };
 }
 
 /** Duck-typed zod detection: plugin sources may carry their own zod copy,

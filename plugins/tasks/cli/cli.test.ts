@@ -926,31 +926,35 @@ describe("bb tasks CLI", () => {
 
     const created = JSON.parse(
       stdout(
-        await harness.runCli([
-          "preset",
-          "create",
-          "--name",
-          "CLI worker",
-          "--provider",
-          "codex",
-          "--model",
-          "gpt-5.6-sol",
-          "--reasoning",
-          "high",
-          "--service-tier",
-          "fast",
-          "--permission",
-          "accept-edits",
-          "--environment",
-          "worktree",
-          "--base-branch",
-          "main",
-          "--machine",
-          "Sawyer Air",
-          "--instructions",
-          "Start with the failing test.",
-          "--json",
-        ]),
+        await harness.runCli(
+          [
+            "preset",
+            "create",
+            "--name",
+            "CLI worker",
+            "--provider",
+            "codex",
+            "--model",
+            "gpt-5.6-sol",
+            "--reasoning",
+            "high",
+            "--service-tier",
+            "fast",
+            "--permission",
+            "accept-edits",
+            "--environment",
+            "worktree",
+            "--base-branch",
+            "main",
+            "--machine",
+            "Sawyer Air",
+            "--instructions",
+            "Start with the failing test.",
+            "--json",
+          ],
+          {},
+          { asOperator: true },
+        ),
       ),
     ).preset;
     expect(created).toMatchObject({
@@ -975,20 +979,24 @@ describe("bb tasks CLI", () => {
 
     const updated = JSON.parse(
       stdout(
-        await harness.runCli([
-          "preset",
-          "update",
-          "CLI worker",
-          "--reasoning",
-          "ultra",
-          "--service-tier",
-          "none",
-          "--name",
-          "CLI reviewer",
-          "--environment",
-          "project-default",
-          "--json",
-        ]),
+        await harness.runCli(
+          [
+            "preset",
+            "update",
+            "CLI worker",
+            "--reasoning",
+            "ultra",
+            "--service-tier",
+            "none",
+            "--name",
+            "CLI reviewer",
+            "--environment",
+            "project-default",
+            "--json",
+          ],
+          {},
+          { asOperator: true },
+        ),
       ),
     ).preset;
     expect(updated).toMatchObject({
@@ -1017,7 +1025,11 @@ describe("bb tasks CLI", () => {
     expect(
       JSON.parse(
         stdout(
-          await harness.runCli(["preset", "delete", "CLI reviewer", "--json"]),
+          await harness.runCli(
+            ["preset", "delete", "CLI reviewer", "--json"],
+            {},
+            { asOperator: true },
+          ),
         ),
       ),
     ).toMatchObject({ deleted: true, preset: { id: created.id } });
@@ -1044,20 +1056,20 @@ describe("bb tasks CLI", () => {
     ];
 
     await expect(
-      harness.runCli([...required, "--environment", "branch"]),
+      harness.runCli([...required, "--environment", "branch"], {}, { asOperator: true }),
     ).resolves.toMatchObject({
       exitCode: 1,
       stderr:
         "invalid --environment branch; expected project-default or worktree",
     });
     await expect(
-      harness.runCli([...required, "--base-branch", "main"]),
+      harness.runCli([...required, "--base-branch", "main"], {}, { asOperator: true }),
     ).resolves.toMatchObject({
       exitCode: 1,
       stderr: "--base-branch requires --environment worktree",
     });
     await expect(
-      harness.runCli([...required, "--machine", "missing"]),
+      harness.runCli([...required, "--machine", "missing"], {}, { asOperator: true }),
     ).resolves.toMatchObject({
       exitCode: 1,
       stderr: "--machine requires --environment worktree",
@@ -2003,20 +2015,24 @@ describe("bb tasks CLI", () => {
       ]),
     );
     stdout(
-      await harness.runCli([
-        "preset",
-        "create",
-        "--name",
-        "CLI worker",
-        "--provider",
-        "codex",
-        "--model",
-        "gpt-5.6-sol",
-        "--reasoning",
-        "high",
-        "--permission",
-        "full",
-      ]),
+      await harness.runCli(
+        [
+          "preset",
+          "create",
+          "--name",
+          "CLI worker",
+          "--provider",
+          "codex",
+          "--model",
+          "gpt-5.6-sol",
+          "--reasoning",
+          "high",
+          "--permission",
+          "full",
+        ],
+        {},
+        { asOperator: true },
+      ),
     );
 
     const result = await harness.runCli([

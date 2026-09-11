@@ -10,11 +10,19 @@ import type {
   ExperimentalPluginWebSocketHandlers,
 } from "@get-bb/plugin-sdk";
 import type { ServerRuntimeConfig } from "../types.js";
+import type { ServerLogger } from "../types.js";
 import { ApiError } from "../errors.js";
 import {
   browserRequestProblem,
   type BrowserRequestProblem,
 } from "../browser-request-guard.js";
+import {
+  appendOperatorAudit,
+  operatorAuditFields,
+  operatorAuthRequiredError,
+  operatorCallerFromRequest,
+  readOrCreateOperatorToken,
+} from "../operator-auth.js";
 import type {
   PluginService,
   PluginWireLookup,
@@ -39,8 +47,12 @@ import {
 } from "@bb/server-contract";
 
 interface PluginRoutesDeps {
-  config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
+  config: Pick<
+    ServerRuntimeConfig,
+    "serverPort" | "appUrl" | "devAppPort" | "dataDir"
+  >;
   db: import("@bb/db").DbConnection;
+  logger: ServerLogger;
 }
 
 type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
@@ -52,6 +64,7 @@ const compressBrotli = promisify(brotliCompress);
 const compressGzip = promisify(gzip);
 const MIN_COMPRESSED_APP_ASSET_BYTES = 1_024;
 const MAX_CACHED_APP_ASSETS = 64;
+const OPERATOR_AUDIT_ARGV_SEGMENTS = 12;
 const APP_ASSET_ENCODINGS = [
   {
     encoding: "br",
@@ -306,6 +319,28 @@ export function registerPluginRoutes(
   const appAssetCompressionCache = createAppAssetCompressionCache(
     MAX_CACHED_APP_ASSETS,
   );
+  let operatorTokenPromise: Promise<string> | null = null;
+  const operatorToken = (): Promise<string> => {
+    operatorTokenPromise ??= readOrCreateOperatorToken(deps.config.dataDir);
+    return operatorTokenPromise;
+  };
+  const operatorGate = async (
+    context: Context,
+  ): Promise<"operator" | "unauthenticated"> =>
+    operatorCallerFromRequest(context, await operatorToken());
+  const auditOperatorGate = (
+    entry: Omit<Parameters<typeof appendOperatorAudit>[1], "time">,
+  ): void => {
+    void appendOperatorAudit(deps.config.dataDir, {
+      time: new Date().toISOString(),
+      ...entry,
+    }).catch((error: unknown) => {
+      deps.logger.error(
+        { err: error },
+        "Failed to append the operator audit log",
+      );
+    });
+  };
   const upgradePluginWebSocket = upgradeWebSocket?.(async (context) => {
     const id = context.req.param("id");
     const prefix = `/api/v1/plugins/${id}/http`;
@@ -413,6 +448,7 @@ export function registerPluginRoutes(
   });
 
   app.post("/plugins/:id/cli", async (context) => {
+    const id = context.req.param("id");
     const authProblem = localAuthProblem(context, deps);
     if (authProblem) {
       return context.json(
@@ -433,6 +469,25 @@ export function registerPluginRoutes(
         400,
       );
     }
+    const operatorOnlyArgv = plugins.isOperatorOnlyCliArgv(id, argv);
+    const callerAuth = operatorOnlyArgv
+      ? await operatorGate(context)
+      : "operator";
+    if (callerAuth !== "operator") {
+      auditOperatorGate({
+        actor: callerAuth,
+        surface: "plugin-cli",
+        pluginId: id,
+        action: argv.slice(0, OPERATOR_AUDIT_ARGV_SEGMENTS).join(" "),
+        outcome: "refused",
+        fields: undefined,
+        status: 403,
+      });
+      return context.json(
+        { ok: false, error: operatorAuthRequiredError() },
+        403,
+      );
+    }
     const ctx: {
       cwd?: string;
       threadId?: string;
@@ -448,6 +503,15 @@ export function registerPluginRoutes(
       argv,
       ctx,
     );
+    if (operatorOnlyArgv) {
+      auditOperatorGate({
+        actor: "operator",
+        surface: "plugin-cli",
+        pluginId: id,
+        action: argv.slice(0, OPERATOR_AUDIT_ARGV_SEGMENTS).join(" "),
+        outcome: "allowed",
+      });
+    }
     return context.json(result);
   });
 
@@ -830,6 +894,30 @@ export function registerPluginRoutes(
         404,
       );
     }
+    const callerAuth = lookup.value.operatorOnly
+      ? await operatorGate(context)
+      : "operator";
+    if (callerAuth !== "operator") {
+      auditOperatorGate({
+        actor: callerAuth,
+        surface: "plugin-rpc",
+        pluginId: id,
+        action: method,
+        outcome: "refused",
+        fields: operatorAuditFields(input),
+        status: 403,
+      });
+      return context.json(
+        {
+          ok: false,
+          error: {
+            code: "operator_auth_required",
+            message: operatorAuthRequiredError(),
+          },
+        },
+        403,
+      );
+    }
     const outcome = await plugins.invokeRpcHandler(
       id,
       method,
@@ -841,6 +929,16 @@ export function registerPluginRoutes(
         { ok: false, error: outcome.error },
         outcome.error.code === "invalid_input" ? 400 : 500,
       );
+    }
+    if (lookup.value.operatorOnly) {
+      auditOperatorGate({
+        actor: "operator",
+        surface: "plugin-rpc",
+        pluginId: id,
+        action: method,
+        outcome: "allowed",
+        fields: operatorAuditFields(input),
+      });
     }
     return context.json({ ok: true, result: outcome.result });
   });
