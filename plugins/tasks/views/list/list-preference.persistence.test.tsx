@@ -355,7 +355,7 @@ describe("list filter/sort preference persistence", () => {
     expect(slot.getByText("ALP-2")).toBeDefined();
   });
 
-  it("isolates All tasks preference from Active", async () => {
+  it("renders the agents view on Active and keeps the All tasks preference separate", async () => {
     const registration = app.navPanels[0]!;
     const allSlot = renderSlot(
       registration,
@@ -371,16 +371,22 @@ describe("list filter/sort preference persistence", () => {
       { subPath: "active" },
       {
         rpc: baseRpc({
-          listTasks: () => ({
-            tasks: [task(PROJECT_A, 9, "in_progress", "high")],
-          }),
+          activeAgents: () => ({ agents: [], taskTotal: 0, revision: "" }),
         }),
       },
     );
-    await activeSlot.findByText("ALP-9");
+    await activeSlot.findByText("No agents working right now");
+    expect(activeSlot.queryByText("ALP-9")).toBeNull();
+
+    const remounted = renderSlot(
+      registration,
+      { subPath: "all" },
+      { rpc: baseRpc() },
+    );
+    await remounted.findByText("ALP-1");
     expect(
-      activeSlot.getByRole("button", { name: /Sort/ }).textContent,
-    ).not.toContain("Priority");
+      remounted.getByRole("button", { name: /Sort/ }).textContent,
+    ).toContain("Priority");
   });
 
   it("persists priority and label filters and sends resolved label ids", async () => {

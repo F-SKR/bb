@@ -93,6 +93,14 @@ For task dispatch and execution presets, read
    bb tasks detach ABC-12 --thread thr_dead_predecessor
    ```
 
+7. To see every agent thread currently counted as active across all projects —
+   with each thread's fresh display state (running, queued, starting, idle,
+   stale, unknown), the model evidence read from BB, and its task — use:
+
+   ```sh
+   bb tasks agents
+   ```
+
 ## Link tasks in responses
 
 When your answer refers the user to a task — including a task you just

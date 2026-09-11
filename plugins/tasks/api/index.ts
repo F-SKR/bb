@@ -14,6 +14,10 @@ import {
 import { deliverCommentToLatestAgent } from "../steer";
 import { isSideChatShapedThread } from "../shared/side-chat";
 import {
+  buildActiveAgentsSnapshot,
+  type ActiveAgentRecord,
+} from "./active-agents.js";
+import {
   tasksRpcContract,
   type Attachment as AttachmentMetadata,
   type ProjectsChangedEvent,
@@ -46,6 +50,19 @@ interface SummaryRow {
   active_agent_count: number;
 }
 
+interface ActiveAgentRecordRow {
+  id: string;
+  task_id: string;
+  thread_id: string;
+  preset_name: string;
+  title: string;
+  attached_at: string;
+  updated_at: string;
+  task_key: string;
+  task_title: string;
+  project_id: string;
+}
+
 const MAX_THREAD_SEARCH_RESULTS = 10;
 
 export interface TasksApiStore {
@@ -56,6 +73,7 @@ export interface TasksApiStore {
   projectPrefixExists(prefix: string, excludingProjectId: string): boolean;
   openTaskCount(): number;
   sidebarSummary(): SidebarProjectSummary[];
+  activeAgentRecords(): ActiveAgentRecord[];
 }
 
 export function createStore(bb: BbPluginApi): TasksApiStore {
@@ -149,6 +167,42 @@ export function createStore(bb: BbPluginApi): TasksApiStore {
           projectId: row.project_id,
           taskCount: row.task_count,
           activeAgentCount: row.active_agent_count,
+        }));
+    },
+    activeAgentRecords(): ActiveAgentRecord[] {
+      return database
+        .prepare<[], ActiveAgentRecordRow>(
+          `
+            SELECT
+              tt.id,
+              tt.task_id,
+              tt.thread_id,
+              tt.preset_name,
+              tt.title,
+              tt.attached_at,
+              tt.updated_at,
+              (p.prefix || '-' || t.number) AS task_key,
+              t.title AS task_title,
+              t.project_id
+            FROM task_threads tt
+            JOIN tasks t ON t.id = tt.task_id
+            JOIN projects p ON p.id = t.project_id
+            WHERE tt.live_status IN ('starting', 'working')
+            ORDER BY p.name COLLATE NOCASE, p.id, t.number, tt.attached_at DESC, tt.id DESC
+          `,
+        )
+        .all()
+        .map((row) => ({
+          id: row.id,
+          taskId: row.task_id,
+          taskKey: row.task_key,
+          taskTitle: row.task_title,
+          projectId: row.project_id,
+          threadId: row.thread_id,
+          presetName: row.preset_name,
+          title: row.title,
+          attachedAt: row.attached_at,
+          updatedAt: row.updated_at,
         }));
     },
   };
@@ -586,6 +640,40 @@ async function listTaskPullRequests(
   };
 }
 
+async function loadModelDisplayNameResolver(
+  bb: BbPluginApi,
+): Promise<(modelId: string) => string> {
+  try {
+    const { models } = await bb.sdk.providers.models();
+    const displayNames = new Map<string, string>();
+    for (const model of models) {
+      displayNames.set(model.model, model.displayName);
+      displayNames.set(model.id, model.displayName);
+    }
+    return (modelId) => displayNames.get(modelId) ?? modelId;
+  } catch {
+    // The catalog only refines display names; without it the exact model id
+    // is shown as-is rather than the model being reported unknown.
+    return (modelId) => modelId;
+  }
+}
+
+async function readLastTurnRequestModel(
+  bb: BbPluginApi,
+  threadId: string,
+): Promise<string | null> {
+  const [row] = await bb.sdk.threads.events.list({
+    threadId,
+    types: ["client/turn/requested"],
+    order: "desc",
+    limit: "1",
+  });
+  if (row === undefined || row.type !== "client/turn/requested") {
+    return null;
+  }
+  return row.data.execution.model;
+}
+
 export function registerHandlers(
   bb: BbPluginApi,
   store: TasksApiStore,
@@ -1008,6 +1096,21 @@ export function registerHandlers(
     },
     sidebarSummary() {
       return { projects: store.sidebarSummary() };
+    },
+    activeAgents() {
+      return loadModelDisplayNameResolver(bb).then((resolveModelDisplayName) =>
+        buildActiveAgentsSnapshot(
+          {
+            threadsGet: (threadId) => bb.sdk.threads.get({ threadId }),
+            queuedMessagesList: (threadId) =>
+              bb.sdk.threads.queuedMessages.list({ threadId }),
+            lastTurnRequestModel: (threadId) =>
+              readLastTurnRequestModel(bb, threadId),
+          },
+          store.activeAgentRecords(),
+          resolveModelDisplayName,
+        ),
+      );
     },
   };
 }

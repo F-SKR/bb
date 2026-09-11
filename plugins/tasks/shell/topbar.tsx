@@ -202,6 +202,24 @@ export function TasksTopbar({
             </span>
           </span>
         );
+      case "running":
+        return (
+          <span className="flex items-center gap-2">
+            <span className="whitespace-nowrap font-semibold">Running</span>
+            <span className="hidden text-xs font-normal text-muted-foreground @md:inline">
+              executing right now
+            </span>
+          </span>
+        );
+      case "blocked":
+        return (
+          <span className="flex items-center gap-2">
+            <span className="whitespace-nowrap font-semibold">Blocked</span>
+            <span className="hidden text-xs font-normal text-muted-foreground @md:inline">
+              evidenced blockers
+            </span>
+          </span>
+        );
       case "manage":
         return (
           <span className="flex items-center gap-2">

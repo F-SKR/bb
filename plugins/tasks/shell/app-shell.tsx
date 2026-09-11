@@ -11,6 +11,7 @@ import {
 import { loadViewMode, storeViewMode } from "./view-preference.js";
 import { TasksTopbar } from "./topbar.js";
 import { ListView } from "../views/list/index.js";
+import { AgentsView } from "../views/agents/index.js";
 import { BoardView } from "../views/board/index.js";
 import { DetailView } from "../views/detail/index.js";
 import { NewTaskDialog } from "../views/manage/new-task-dialog.js";
@@ -71,7 +72,11 @@ function RouteOutlet({
     case "all":
       return <ListView projectId={null} />;
     case "active":
-      return <ListView projectId={null} activeOnly />;
+      return <AgentsView mode="active" />;
+    case "running":
+      return <AgentsView mode="running" />;
+    case "blocked":
+      return <AgentsView mode="blocked" />;
     case "manage":
       return <ManagePanel />;
     case "task":

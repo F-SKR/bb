@@ -1,10 +1,10 @@
 import { useMemo, useState, type ReactNode } from "react";
 import type {
+  ActiveAgentsSnapshot,
   Folder,
   Preset,
   Project,
   SidebarProjectSummary,
-  Task,
 } from "../shared/contract.js";
 import { useTasksRpc } from "./data.js";
 import type { TasksRoute } from "./routes.js";
@@ -161,7 +161,7 @@ interface TasksSidebarProps {
   projects: Project[] | undefined;
   summaries: SidebarProjectSummary[] | undefined;
   presets: Preset[] | undefined;
-  activeTasks: Task[] | undefined;
+  activeAgents: ActiveAgentsSnapshot | undefined;
   isLoading: boolean;
   onNavigate: (route: TasksRoute) => void;
   onNewProject: () => void;
@@ -173,7 +173,7 @@ export function TasksSidebar({
   projects,
   summaries,
   presets,
-  activeTasks,
+  activeAgents,
   isLoading,
   onNavigate,
   onNewProject,
@@ -264,8 +264,44 @@ export function TasksSidebar({
           >
             <Icon name="Zap" className="size-3.5 shrink-0" />
             <span className="flex-1">Active</span>
-            {activeTasks && activeTasks.length > 0 ? <WorkingDot /> : null}
-            {activeTasks ? <RowCount value={activeTasks.length} /> : null}
+            {activeAgents && activeAgents.agents.length > 0 ? (
+              <WorkingDot />
+            ) : null}
+            {activeAgents ? (
+              <RowCount value={activeAgents.agents.length} />
+            ) : null}
+          </SidebarRow>
+          <SidebarRow
+            active={route.kind === "running"}
+            onClick={() => onNavigate({ kind: "running" })}
+          >
+            <Icon name="Play" className="size-3.5 shrink-0" />
+            <span className="flex-1">Running</span>
+            {activeAgents ? (
+              <RowCount
+                value={
+                  activeAgents.agents.filter(
+                    (agent) => agent.state === "running",
+                  ).length
+                }
+              />
+            ) : null}
+          </SidebarRow>
+          <SidebarRow
+            active={route.kind === "blocked"}
+            onClick={() => onNavigate({ kind: "blocked" })}
+          >
+            <Icon name="AlertCircle" className="size-3.5 shrink-0" />
+            <span className="flex-1">Blocked</span>
+            {activeAgents ? (
+              <RowCount
+                value={
+                  activeAgents.agents.filter(
+                    (agent) => agent.blocker !== null,
+                  ).length
+                }
+              />
+            ) : null}
           </SidebarRow>
         </div>
         {isLoading ? (
