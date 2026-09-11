@@ -51,6 +51,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     component: "server",
     dataDir: serverConfig.BB_DATA_DIR,
   });
+  if (serverConfig.BB_OPERATOR_TOKEN_FILE === undefined) {
+    logger.warn(
+      "operator-reserved plugin surfaces use the data-dir token file, which every process of this OS user can read; on a shared-uid host that is not enforcement against worker processes — set BB_OPERATOR_TOKEN_FILE to a path only the server's own identity can read (distinct server uid or sandbox, see docs/configuration.md)",
+    );
+  }
   const db = initDb(serverConfig.databasePath, {
     dataDir: serverConfig.BB_DATA_DIR,
     logger,
@@ -105,6 +110,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   }
   if (serverConfig.BB_SERVER_LAUNCH_ID !== undefined) {
     runtimeConfig.launchId = serverConfig.BB_SERVER_LAUNCH_ID;
+  }
+  if (serverConfig.BB_OPERATOR_TOKEN_FILE !== undefined) {
+    runtimeConfig.operatorTokenFile = serverConfig.BB_OPERATOR_TOKEN_FILE;
   }
   const terminalSessions = new TerminalSessionLifecycle({
     config: runtimeConfig,

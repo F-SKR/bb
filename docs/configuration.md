@@ -313,12 +313,38 @@ operator-only invocation is appended to `operator-audit.jsonl` in the data
 dir with the authenticated actor, time, surface, action, and attempted
 fields — never the token itself.
 
+### Deployment prerequisite for real enforcement
+
 The token authenticates a caller that can present the secret; it does not
-elevate Unix identity. Any process running as the same user as the server
-can read the data dir, so a same-user process that goes looking for the
-secret can find it. The boundary this draws is between sanctioned paths
-(app, CLI, rpc, plugins, agent sessions) and everything that should not
-change operator configuration; it is not an operating-system sandbox.
+elevate Unix identity. On the default setup the token lives in the data dir,
+which every process running as the server's user can read — so on a host
+where agent workers share the server's uid, the data-dir token is NOT
+enforcement against those workers, and the server logs a warning saying so
+at startup. It is enforcement against every caller that cannot read the
+machine's files: other uids, other machines, and the sanctioned paths'
+identity rules.
+
+To close the shared-uid gap, deploy with a distinct restricted worker
+identity (or an equivalent sandbox) and set `BB_OPERATOR_TOKEN_FILE` to a
+path only the server's identity can read:
+
+- The worker identity must not be able to read the credential file, read the
+  server process's memory or environment, or write the server's data dir
+  (control-plane data). A dedicated uid for the server with the token file
+  owned by it, mode 0600, satisfies all three; run the workers as a
+  different uid.
+- The operator issues the token there once (for example
+  `umask 077 && openssl rand -hex 32 > "$BB_OPERATOR_TOKEN_FILE"`) and
+  pastes the same value into Settings → Operator access or exports it as
+  `BB_OPERATOR_TOKEN` in their own shell.
+
+`BB_OPERATOR_TOKEN_FILE` is read-only by design: the operator issues and
+rotates the credential, so the server never mints or replaces it. A missing,
+empty, or unreadable file fails closed — operator-reserved surfaces refuse
+every caller with the reason until the file is restored; nothing falls back
+to a token in the data dir. With the distinct worker identity in place this
+refusal only happens when the deployment is actually broken, which is the
+point: the gate cannot silently degrade to a secret workers can read.
 
 ## Keyboard Shortcuts
 

@@ -327,6 +327,26 @@ describe("consumer-specific config", () => {
     ).toBe("launch-123");
   });
 
+  it("carries the operator token file only when it is set to a non-blank path", () => {
+    expect(
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_OPERATOR_TOKEN_FILE: undefined }),
+      }),
+    ).not.toHaveProperty("BB_OPERATOR_TOKEN_FILE");
+    expect(
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_OPERATOR_TOKEN_FILE: "   " }),
+      }),
+    ).not.toHaveProperty("BB_OPERATOR_TOKEN_FILE");
+    expect(
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_OPERATOR_TOKEN_FILE: "/etc/bb/operator-token",
+        }),
+      }).BB_OPERATOR_TOKEN_FILE,
+    ).toBe("/etc/bb/operator-token");
+  });
+
   it("defaults the server bind host to loopback", () => {
     const serverConfig = loadServerConfig({
       env: createServerRuntimeEnv({

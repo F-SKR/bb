@@ -21,7 +21,8 @@ import {
   operatorAuditFields,
   operatorAuthRequiredError,
   operatorCallerFromRequest,
-  readOrCreateOperatorToken,
+  operatorTokenSourceUnavailableError,
+  resolveOperatorToken,
 } from "../operator-auth.js";
 import type {
   PluginService,
@@ -49,7 +50,7 @@ import {
 interface PluginRoutesDeps {
   config: Pick<
     ServerRuntimeConfig,
-    "serverPort" | "appUrl" | "devAppPort" | "dataDir"
+    "serverPort" | "appUrl" | "devAppPort" | "dataDir" | "operatorTokenFile"
   >;
   db: import("@bb/db").DbConnection;
   logger: ServerLogger;
@@ -321,13 +322,44 @@ export function registerPluginRoutes(
   );
   let operatorTokenPromise: Promise<string> | null = null;
   const operatorToken = (): Promise<string> => {
-    operatorTokenPromise ??= readOrCreateOperatorToken(deps.config.dataDir);
+    operatorTokenPromise ??= resolveOperatorToken({
+      dataDir: deps.config.dataDir,
+      tokenFile: deps.config.operatorTokenFile,
+    });
     return operatorTokenPromise;
   };
-  const operatorGate = async (
-    context: Context,
-  ): Promise<"operator" | "unauthenticated"> =>
-    operatorCallerFromRequest(context, await operatorToken());
+  let operatorTokenFailure: string | null = null;
+  type OperatorCallerAuth = "operator" | "unauthenticated" | "unavailable";
+  const operatorGate = async (context: Context): Promise<OperatorCallerAuth> => {
+    try {
+      const callerAuth = operatorCallerFromRequest(
+        context,
+        await operatorToken(),
+      );
+      operatorTokenFailure = null;
+      return callerAuth;
+    } catch (error) {
+      operatorTokenPromise = null;
+      operatorTokenFailure =
+        error instanceof Error ? error.message : String(error);
+      deps.logger.error(
+        { err: error },
+        "The operator token source is unreadable; operator-reserved surfaces refuse every caller",
+      );
+      return "unavailable";
+    }
+  };
+  const operatorCallerAuthError = (
+    callerAuth: OperatorCallerAuth,
+  ): { code: "operator_auth_required"; message: string } => ({
+    code: "operator_auth_required",
+    message:
+      callerAuth === "unavailable"
+        ? operatorTokenSourceUnavailableError(
+            operatorTokenFailure ?? "unknown error",
+          )
+        : operatorAuthRequiredError(),
+  });
   const auditOperatorGate = (
     entry: Omit<Parameters<typeof appendOperatorAudit>[1], "time">,
   ): void => {
@@ -475,7 +507,7 @@ export function registerPluginRoutes(
       : "operator";
     if (callerAuth !== "operator") {
       auditOperatorGate({
-        actor: callerAuth,
+        actor: "unauthenticated",
         surface: "plugin-cli",
         pluginId: id,
         action: argv.slice(0, OPERATOR_AUDIT_ARGV_SEGMENTS).join(" "),
@@ -484,7 +516,7 @@ export function registerPluginRoutes(
         status: 403,
       });
       return context.json(
-        { ok: false, error: operatorAuthRequiredError() },
+        { ok: false, error: operatorCallerAuthError(callerAuth) },
         403,
       );
     }
@@ -899,7 +931,7 @@ export function registerPluginRoutes(
       : "operator";
     if (callerAuth !== "operator") {
       auditOperatorGate({
-        actor: callerAuth,
+        actor: "unauthenticated",
         surface: "plugin-rpc",
         pluginId: id,
         action: method,
@@ -908,13 +940,7 @@ export function registerPluginRoutes(
         status: 403,
       });
       return context.json(
-        {
-          ok: false,
-          error: {
-            code: "operator_auth_required",
-            message: operatorAuthRequiredError(),
-          },
-        },
+        { ok: false, error: operatorCallerAuthError(callerAuth) },
         403,
       );
     }
