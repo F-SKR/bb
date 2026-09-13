@@ -1,0 +1,41 @@
+[Unit]
+Description=bb control plane (server + web, no local worker daemon)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=bb-control
+Group=bb-control
+ExecStart=@NODE_BIN@ @BB_APP_ROOT@/server/dist/index.js
+Environment=NODE_ENV=production
+Environment=BB_DATA_DIR=@CONTROL_DATA_DIR@
+Environment=BB_SERVER_PORT=@SERVER_PORT@
+Environment=BB_HOST_DAEMON_PORT=@HOST_DAEMON_PORT@
+Environment=BB_APP_SURFACE=web
+Environment=BB_SERVER_BIND_HOST=127.0.0.1
+Environment=BB_OPERATOR_TOKEN_FILE=@CONTROL_DATA_DIR@/operator-token
+WorkingDirectory=@CONTROL_DATA_DIR@
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=@CONTROL_DATA_DIR@
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0027
+
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

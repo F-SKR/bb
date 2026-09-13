@@ -1,0 +1,38 @@
+[Unit]
+Description=bb host workers (host daemon + agent worker children, restricted identity)
+After=network-online.target bb-control-plane.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=bb-worker
+Group=bb-worker
+ExecStart=@NODE_BIN@ @BB_APP_ROOT@/dist/bb-app.js host-daemon --server-url http://127.0.0.1:@SERVER_PORT@ --host-daemon-port @HOST_DAEMON_PORT@
+Environment=NODE_ENV=production
+Environment=BB_DATA_DIR=@WORKER_DATA_DIR@
+Environment=BB_SERVER_URL=http://127.0.0.1:@SERVER_PORT@
+Environment=HOME=@WORKER_DATA_DIR@
+WorkingDirectory=@WORKER_DATA_DIR@
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=@WORKER_DATA_DIR@
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0027
+
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

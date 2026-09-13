@@ -346,6 +346,12 @@ to a token in the data dir. With the distinct worker identity in place this
 refusal only happens when the deployment is actually broken, which is the
 point: the gate cannot silently degrade to a secret workers can read.
 
+[ops/operator-isolation/](../ops/operator-isolation/README.md) ships this
+boundary as an installable configuration: systemd units that run the
+control plane as `bb-control` and the host daemon with all agent workers as
+`bb-worker`, with reproducible setup, rollback, and a verification script
+that exercises the actual worker denial against the live deployment.
+
 ## Keyboard Shortcuts
 
 `Mod+Shift+P` opens the quick palette: type to filter, then run a command with
