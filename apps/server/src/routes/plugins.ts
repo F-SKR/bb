@@ -362,8 +362,8 @@ export function registerPluginRoutes(
   });
   const auditOperatorGate = (
     entry: Omit<Parameters<typeof appendOperatorAudit>[1], "time">,
-  ): void => {
-    void appendOperatorAudit(deps.config.dataDir, {
+  ): Promise<void> =>
+    appendOperatorAudit(deps.config.dataDir, {
       time: new Date().toISOString(),
       ...entry,
     }).catch((error: unknown) => {
@@ -372,7 +372,6 @@ export function registerPluginRoutes(
         "Failed to append the operator audit log",
       );
     });
-  };
   const upgradePluginWebSocket = upgradeWebSocket?.(async (context) => {
     const id = context.req.param("id");
     const prefix = `/api/v1/plugins/${id}/http`;
@@ -506,7 +505,7 @@ export function registerPluginRoutes(
       ? await operatorGate(context)
       : "operator";
     if (callerAuth !== "operator") {
-      auditOperatorGate({
+      await auditOperatorGate({
         actor: "unauthenticated",
         surface: "plugin-cli",
         pluginId: id,
@@ -536,7 +535,7 @@ export function registerPluginRoutes(
       ctx,
     );
     if (operatorOnlyArgv) {
-      auditOperatorGate({
+      await auditOperatorGate({
         actor: "operator",
         surface: "plugin-cli",
         pluginId: id,
@@ -930,7 +929,7 @@ export function registerPluginRoutes(
       ? await operatorGate(context)
       : "operator";
     if (callerAuth !== "operator") {
-      auditOperatorGate({
+      await auditOperatorGate({
         actor: "unauthenticated",
         surface: "plugin-rpc",
         pluginId: id,
@@ -957,7 +956,7 @@ export function registerPluginRoutes(
       );
     }
     if (lookup.value.operatorOnly) {
-      auditOperatorGate({
+      await auditOperatorGate({
         actor: "operator",
         surface: "plugin-rpc",
         pluginId: id,
