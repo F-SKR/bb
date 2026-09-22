@@ -2043,4 +2043,103 @@ describe("bb tasks CLI", () => {
 
     await harness.dispose();
   });
+
+  it("lists active agents with model evidence through bb tasks agents", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) =>
+            makeThreadResponse({
+              id: threadId,
+              status: threadId === "thr_cli_run" ? "active" : "idle",
+              queuedMessageCount: threadId === "thr_cli_wait" ? 1 : 0,
+            }),
+          queuedMessages: {
+            list: async ({ threadId }: { threadId: string }) =>
+              threadId === "thr_cli_wait"
+                ? [{ model: "glm-4.6", waitingOn: null, failureReason: null }]
+                : [],
+          },
+          events: {
+            list: async ({ threadId }: { threadId: string }) =>
+              threadId === "thr_cli_run"
+                ? [
+                    {
+                      type: "client/turn/requested",
+                      data: { execution: { model: "claude-sonnet-5" } },
+                    },
+                  ]
+                : [],
+          },
+        },
+        providers: {
+          models: async () => ({
+            providers: [],
+            models: [
+              {
+                id: "anthropic/claude-sonnet-5",
+                model: "claude-sonnet-5",
+                displayName: "Claude Sonnet 5",
+              },
+              { id: "zai/glm-4.6", model: "glm-4.6", displayName: "GLM-4.6" },
+            ],
+          }),
+        },
+      },
+    });
+    await plugin(bb);
+    const store = createStore(bb).tasks;
+    const project = store.createProject({
+      name: "Agents CLI",
+      prefix: "AGC",
+      color: "blue",
+    });
+    const task = store.createTask({
+      projectId: project.id,
+      title: "Watched by two agents",
+    });
+    store.upsertTaskThread({
+      taskId: task.id,
+      threadId: "thr_cli_run",
+      presetName: "worker",
+      title: "Runner",
+      liveStatus: "working",
+    });
+    store.upsertTaskThread({
+      taskId: task.id,
+      threadId: "thr_cli_wait",
+      presetName: "worker",
+      title: "Waiter",
+      liveStatus: "working",
+    });
+
+    const text = stdout(await harness.runCli(["agents"]));
+    expect(text).toContain("2 agents across 1 tasks");
+    expect(text).toContain("thr_cli_run");
+    expect(text).toContain("Claude Sonnet 5");
+    expect(text).toContain("GLM-4.6");
+
+    const parsed = JSON.parse(
+      stdout(await harness.runCli(["agents", "--json"])),
+    );
+    expect(parsed.agents).toHaveLength(2);
+    expect(parsed.taskTotal).toBe(1);
+    const running = parsed.agents.find(
+      (agent: { threadId: string }) => agent.threadId === "thr_cli_run",
+    );
+    expect(running.state).toBe("running");
+    expect(running.model).toEqual({
+      id: "claude-sonnet-5",
+      displayName: "Claude Sonnet 5",
+      evidence: "current-turn",
+    });
+    const queued = parsed.agents.find(
+      (agent: { threadId: string }) => agent.threadId === "thr_cli_wait",
+    );
+    expect(queued.state).toBe("queued");
+    expect(queued.model.evidence).toBe("queued");
+
+    await harness.dispose();
+  });
 });

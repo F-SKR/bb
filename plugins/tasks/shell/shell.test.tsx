@@ -70,6 +70,7 @@ function seededRpc(overrides: Record<string, unknown> = {}) {
     }),
     listTasks: () => ({ tasks: [] }),
     getTaskByKey: () => ({ task: null }),
+    activeAgents: () => ({ agents: [], taskTotal: 0, revision: "" }),
     ...overrides,
   };
 }
@@ -85,6 +86,8 @@ describe("tasks route grammar", () => {
     const routes = [
       { kind: "all" },
       { kind: "active" },
+      { kind: "running" },
+      { kind: "blocked" },
       { kind: "manage" },
       { kind: "task", taskKey: "TSK-4" },
       { kind: "project", projectId: PROJECT_ID, view: "list" },
@@ -858,17 +861,15 @@ describe("tasks app shell", () => {
     ];
     const rpc = seededRpc({
       listLabels: () => ({ labels: [] }),
-      listTasks: (input: { activeOnly?: boolean }) =>
-        input.activeOnly === true
-          ? Promise.reject(new Error("active fetch failed"))
-          : { tasks },
+      listTasks: () => ({ tasks }),
+      activeAgents: () => Promise.reject(new Error("active fetch failed")),
     });
     const Panel = app.navPanels[0]!.component;
     const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, { rpc });
     await slot.findByText("Scope truth");
 
     slot.lifecycle.rerender(<Panel subPath="active" />);
-    await slot.findByText("Couldn't load tasks");
+    await slot.findByText("Couldn't load agents");
     expect(slot.queryByText("Scope truth")).toBeNull();
     expect(slot.queryByText("No agents working right now")).toBeNull();
   });
@@ -900,8 +901,7 @@ describe("tasks app shell", () => {
     const rpc = seededRpc({
       listLabels: () => ({ labels: [] }),
       listTasks: (input: { activeOnly?: boolean }) => {
-        if (input.activeOnly === true) return { tasks: [] };
-        if (!deferAll) return { tasks };
+        if (!deferAll || input.activeOnly === true) return { tasks };
         return new Promise((resolve) => {
           releaseAll = () => resolve({ tasks });
         });
@@ -1096,5 +1096,139 @@ describe("tasks app shell", () => {
     const settled = projectCalls;
     await slot.emitRealtime("comments:changed", { taskId: "x" });
     expect(projectCalls).toBe(settled);
+  });
+});
+
+describe("agents views", () => {
+  const TASK_A = "01HZZZZZZZZZZZZZZZZZZZZZTA";
+  const TASK_B = "01HZZZZZZZZZZZZZZZZZZZZZTB";
+  const TASK_C = "01HZZZZZZZZZZZZZZZZZZZZZTC";
+  const OTHER_PROJECT = "01HZZZZZZZZZZZZZZZZZZZZZP2";
+
+  const agent = (overrides: Record<string, unknown> & {
+    id: string;
+    threadId: string;
+    taskId: string;
+    taskKey: string;
+  }) => ({
+    taskTitle: `Task ${overrides.taskKey}`,
+    projectId: PROJECT_ID,
+    providerId: "claude-code",
+    presetName: "worker",
+    detail: null,
+    attachedAt: "2026-09-10T00:00:00.000Z",
+    updatedAt: "2026-09-11T00:00:00.000Z",
+    model: { id: "claude-sonnet-5", displayName: "Claude Sonnet 5", evidence: "current-turn" },
+    blocker: null,
+    ...overrides,
+  });
+
+  const criterionAgents = [
+    agent({ id: "agent-1", taskId: TASK_A, taskKey: "TSK-1", threadId: "thr_run01", title: "Implementing", state: "running" }),
+    agent({
+      id: "agent-2", taskId: TASK_A, taskKey: "TSK-1", threadId: "thr_qued1", title: "Queued worker", state: "queued",
+      model: { id: "glm-4.6", displayName: "GLM-4.6", evidence: "queued" },
+    }),
+    agent({ id: "agent-3", taskId: TASK_A, taskKey: "TSK-1", threadId: "thr_idle1", title: "Idle worker", state: "idle", model: { id: "claude-sonnet-5", displayName: "Claude Sonnet 5", evidence: "last-turn" } }),
+    agent({
+      id: "agent-4", taskId: TASK_B, taskKey: "TSK-2", threadId: "thr_stale1", title: "Lost worker", state: "stale",
+      detail: "created but never dispatched", model: { id: null, displayName: "Model unknown", evidence: "none" },
+    }),
+    agent({
+      id: "agent-5", taskId: TASK_C, taskKey: "TSK-3", threadId: "thr_blkd1", title: "Held worker", state: "queued",
+      model: { id: null, displayName: "Model unknown", evidence: "none" },
+      blocker: { kind: "interaction", detail: null },
+      projectId: OTHER_PROJECT,
+    }),
+  ];
+
+  const agentsRpc = seededRpc({
+    activeAgents: () => ({
+      agents: criterionAgents,
+      taskTotal: 3,
+      revision: "fixture-revision",
+    }),
+  });
+
+  const openAgentsPage = (subPath: string, rpc = agentsRpc) =>
+    renderSlot(app.navPanels[0]!, { subPath }, { rpc });
+
+  it("shows every counted agent row, the truthful label, and per-agent states", async () => {
+    const slot = openAgentsPage("active");
+    await slot.findByText("5 agents across 3 tasks");
+    expect(await slot.findAllByRole("button", { name: /Open thread/ })).toHaveLength(5);
+    expect(slot.getAllByText("TSK-1").length).toBeGreaterThan(0);
+    expect(slot.getByText("Implementing")).toBeDefined();
+    expect(slot.getByText("Queued worker")).toBeDefined();
+    expect(slot.getByText("Idle worker")).toBeDefined();
+    expect(slot.getByText("Lost worker")).toBeDefined();
+    expect(slot.getByText("Held worker")).toBeDefined();
+    expect(slot.getByText("GLM-4.6")).toBeDefined();
+    expect(slot.getAllByText("Model unknown")).toHaveLength(2);
+  });
+
+  it("keeps the sidebar Active badge equal to the agent row count", async () => {
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      { rpc: agentsRpc },
+    );
+    await slot.findByText("Tasks Plugin");
+    expect(slot.getByText("5")).toBeDefined();
+  });
+
+  it("opens the exact BB thread from a row's working control", async () => {
+    const slot = openAgentsPage("active");
+    const buttons = await slot.findAllByRole("button", { name: /Open thread/ });
+    expect(buttons).toHaveLength(5);
+    fireEvent.click(buttons[0]!);
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toThread",
+      threadId: "thr_run01",
+    });
+  });
+
+  it("narrows with search without dropping the total from the label", async () => {
+    const slot = openAgentsPage("active");
+    await slot.findByText("5 agents across 3 tasks");
+    fireEvent.input(slot.getByLabelText("Search agents"), {
+      target: { value: "Implementing" },
+    });
+    expect(slot.getByText("1 agents across 1 tasks")).toBeDefined();
+    expect(slot.getByText("of 5 total")).toBeDefined();
+    expect(slot.getByText("Implementing")).toBeDefined();
+    expect(slot.queryByText("Queued worker")).toBeNull();
+  });
+
+  it("shows only positively running agents on Running", async () => {
+    const slot = openAgentsPage("running");
+    await slot.findByText("1 agents running across 1 tasks");
+    expect(slot.getByText("Implementing")).toBeDefined();
+    expect(slot.queryByText("Queued worker")).toBeNull();
+    expect(slot.queryByText("Idle worker")).toBeNull();
+  });
+
+  it("shows only evidenced blockers on Blocked and counts cards separately", async () => {
+    const slot = openAgentsPage("blocked");
+    await slot.findByText("1 blocked agents across 1 tasks");
+    expect(slot.getByText("Held worker")).toBeDefined();
+    expect(slot.getByText("Waiting for approval")).toBeDefined();
+    expect(slot.queryByText("Implementing")).toBeNull();
+    expect(slot.queryByText("Lost worker")).toBeNull();
+  });
+
+  it("keeps the blocked-scope note visible so threadless cards are not claimed", async () => {
+    const slot = openAgentsPage("blocked");
+    await slot.findByText(/thread evidence only/);
+  });
+
+  it("filters agents to one project without dropping the total from the label", async () => {
+    const slot = openAgentsPage("active");
+    await slot.findByText("5 agents across 3 tasks");
+    fireEvent.click(slot.getByRole("combobox", { name: "Filter by project" }));
+    fireEvent.click(await slot.findByRole("option", { name: "Tasks Plugin" }));
+    expect(slot.getByText("4 agents across 2 tasks")).toBeDefined();
+    expect(slot.getByText("of 5 total")).toBeDefined();
+    expect(slot.queryByText("Held worker")).toBeNull();
   });
 });

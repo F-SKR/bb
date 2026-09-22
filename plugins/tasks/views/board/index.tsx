@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  type ActiveAgent,
   type Label,
   type Task,
   type TaskStatus,
@@ -13,6 +14,7 @@ import {
 } from "../../shared/contract.js";
 import {
   listAllTasks,
+  useActiveAgents,
   useTasksQuery,
   useTasksRpc,
   type TasksRpc,
@@ -28,6 +30,7 @@ import {
 } from "./drop-position.js";
 import { PriorityIcon, StatusIcon } from "./icons.js";
 import { STATUS_LABELS } from "../list/lib.js";
+import { AGENT_STATE_LABELS } from "../agents/index.js";
 import { Button } from "@bb/shared-ui/button";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon } from "@bb/shared-ui/icon";
@@ -157,7 +160,43 @@ interface DragState {
   dropIndex: number;
 }
 
-function WorkingAgentsChip({ threads }: { threads: TaskThread[] }) {
+function WorkingAgentsChip({
+  threads,
+  agents,
+}: {
+  threads: TaskThread[];
+  agents: ActiveAgent[];
+}) {
+  if (agents.length > 0) {
+    const runningCount = agents.filter(
+      (agent) => agent.state === "running",
+    ).length;
+    const label =
+      agents.length === 1
+        ? `${agents[0]!.model.id !== null ? agents[0]!.model.displayName : agents[0]!.presetName} · ${AGENT_STATE_LABELS[agents[0]!.state]}`
+        : runningCount === agents.length
+          ? `${agents.length} agents · ${AGENT_STATE_LABELS.running}`
+          : runningCount > 0
+            ? `${agents.length} agents · ${runningCount} running`
+            : `${agents.length} agents · ${AGENT_STATE_LABELS[agents[0]!.state]}`;
+    return (
+      <span
+        className="flex min-w-0 items-center gap-1 font-medium text-success"
+        title={agents.map((agent) => `${agent.title}: ${agent.model.displayName} (${AGENT_STATE_LABELS[agent.state]})`).join("\n")}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            runningCount > 0
+              ? "animate-pulse bg-success"
+              : "bg-muted-foreground",
+          )}
+        />
+        <span className="truncate">{label}</span>
+      </span>
+    );
+  }
   if (threads.length === 0) return null;
   return (
     <span className="flex min-w-0 items-center gap-1 font-medium text-success">
@@ -178,6 +217,7 @@ interface TaskCardProps {
   task: Task;
   labelsById: Map<string, Label>;
   meta: BoardCardMeta;
+  agents: ActiveAgent[];
   ghost?: boolean;
   dragging?: boolean;
   cardRef?: (element: HTMLDivElement | null) => void;
@@ -189,6 +229,7 @@ function TaskCard({
   task,
   labelsById,
   meta,
+  agents,
   ghost = false,
   dragging = false,
   cardRef,
@@ -214,7 +255,7 @@ function TaskCard({
     >
       <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
         <span className="tabular-nums">{task.key}</span>
-        <WorkingAgentsChip threads={meta.workingThreads} />
+        <WorkingAgentsChip threads={meta.workingThreads} agents={agents} />
       </div>
       <div className="mt-1 line-clamp-2 text-sm leading-snug font-medium">
         {task.title}
@@ -284,6 +325,13 @@ export function BoardView({ projectId }: BoardViewProps) {
     ["tasks:changed", "projects:changed", "threads:changed"],
     [projectId],
   );
+  const activeAgents = useActiveAgents();
+  const agentsByTaskId = new Map<string, ActiveAgent[]>();
+  for (const agent of activeAgents.data?.agents ?? []) {
+    const agents = agentsByTaskId.get(agent.taskId);
+    if (agents === undefined) agentsByTaskId.set(agent.taskId, [agent]);
+    else agents.push(agent);
+  }
 
   const [columns, setColumns] = useState<ColumnMap | undefined>(undefined);
   useEffect(() => {
@@ -496,6 +544,7 @@ export function BoardView({ projectId }: BoardViewProps) {
           task={task}
           labelsById={labelsById}
           meta={metaByTaskId.get(task.id) ?? EMPTY_META}
+          agents={agentsByTaskId.get(task.id) ?? []}
           dragging={drag?.taskId === task.id}
           cardRef={(element) => {
             if (element) cardRefs.current.set(task.id, element);
@@ -566,6 +615,7 @@ export function BoardView({ projectId }: BoardViewProps) {
             task={ghostTask}
             labelsById={labelsById}
             meta={metaByTaskId.get(ghostTask.id) ?? EMPTY_META}
+            agents={agentsByTaskId.get(ghostTask.id) ?? []}
             ghost
           />
         </div>

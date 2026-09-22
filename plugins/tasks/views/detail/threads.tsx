@@ -6,6 +6,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import type {
+  ActiveAgent,
   Preset,
   TaskPullRequest,
   TaskThread,
@@ -16,6 +17,8 @@ import {
   formatRelativeTime,
   isActiveThread,
 } from "./meta.js";
+import { AGENT_STATE_LABELS } from "../agents/index.js";
+import { useActiveAgents } from "../../shell/data.js";
 import { PresetDialog, savePresetDraft } from "../manage/preset-dialog.js";
 import { ConfirmDialog } from "../../components/confirm-dialog.js";
 import { useTasksRpc } from "../../shell/data.js";
@@ -68,12 +71,14 @@ function ThreadPullRequestPill({
 
 function ThreadCard({
   thread,
+  agent,
   pullRequest,
   pullRequestUnavailable,
   busy,
   onDetach,
 }: {
   thread: TaskThread;
+  agent: ActiveAgent | undefined;
   pullRequest: TaskPullRequest | undefined;
   pullRequestUnavailable: boolean;
   busy: boolean;
@@ -93,12 +98,18 @@ function ThreadCard({
           aria-hidden
           className={cn("size-1.5 rounded-full", meta.dotClassName)}
         />
-        {meta.label}
+        {agent ? AGENT_STATE_LABELS[agent.state] : meta.label}
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{thread.title}</div>
         <div className="text-xs text-muted-foreground">
-          {thread.presetName} · attached {formatRelativeTime(thread.attachedAt)}
+          {thread.presetName}
+          {agent && agent.providerId !== null ? ` · ${agent.providerId}` : ""}
+          {agent ? ` · ${agent.model.displayName}` : ""}
+          {agent && agent.model.evidence === "queued" ? " (Queued)" : ""}
+          {agent && agent.model.evidence === "last-turn" ? " (Last used)" : ""}
+          {agent?.detail ? ` · ${agent.detail}` : ""} · attached{" "}
+          {formatRelativeTime(thread.attachedAt)}
         </div>
       </div>
       <ThreadPullRequestPill
@@ -311,6 +322,10 @@ export function ThreadsSection({
     }
   }
   const unavailable = new Set(unavailableThreadIds);
+  const agentByThreadId = new Map<string, ActiveAgent>();
+  for (const agent of useActiveAgents().data?.agents ?? []) {
+    agentByThreadId.set(agent.threadId, agent);
+  }
 
   return (
     <section>
@@ -324,6 +339,7 @@ export function ThreadsSection({
         <ThreadCard
           key={thread.id}
           thread={thread}
+          agent={agentByThreadId.get(thread.threadId)}
           pullRequest={pullRequestByThread.get(thread.threadId)}
           pullRequestUnavailable={unavailable.has(thread.threadId)}
           busy={pending.has(thread.id)}

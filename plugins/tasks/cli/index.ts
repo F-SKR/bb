@@ -72,6 +72,7 @@ Commands:
   attach                         Attach an agent thread to a task
   detach                         Detach an agent thread from a task
   threads                        List threads attached to a task
+  agents                         List agent threads currently counted as active
   seed-demo                      Create sample data (requires --yes)
 
 Run bb tasks <command> --help for command usage.`;
@@ -125,6 +126,8 @@ const ATTACH_HELP =
 const DETACH_HELP =
   "Usage: bb tasks detach <key> [--thread <thread-id>] [--json]";
 const THREADS_HELP = "Usage: bb tasks threads <key> [--json]";
+const AGENTS_HELP =
+  "Usage: bb tasks agents [--json]\n\nLists every agent thread a task currently counts as active, with the\nthread's fresh display state and the model evidence read from BB.";
 
 interface PluginStatus {
   name: string;
@@ -1923,6 +1926,33 @@ async function runThreads(
       );
 }
 
+async function runAgents(domain: TasksDomain, argv: string[]): Promise<string> {
+  const args = parseArgs(argv);
+  if (args.flags.has("help")) return AGENTS_HELP;
+  assertAllowed(args, []);
+  requirePositionals(args, 0, AGENTS_HELP);
+  const snapshot = tasksRpcContract.activeAgents.output.parse(
+    await domain.activeAgents(null),
+  );
+  return args.flags.has("json")
+    ? JSON.stringify(snapshot)
+    : [
+        `${snapshot.agents.length} agents across ${snapshot.taskTotal} tasks`,
+        table(
+          ["TASK", "STATE", "MODEL", "PRESET", "TITLE", "THREAD"],
+          snapshot.agents.map((agent) => [
+            agent.taskKey,
+            agent.state,
+            agent.model.displayName,
+            agent.presetName,
+            singleLine(agent.title),
+            agent.threadId,
+          ]),
+          "No agents working right now.",
+        ),
+      ].join("\n");
+}
+
 function friendlyError(error: unknown): string {
   if (error instanceof CliError) return error.message;
   if (error instanceof z.ZodError) {
@@ -2036,6 +2066,11 @@ export function registerTasksCli(
         usage: THREADS_HELP,
       },
       {
+        name: "agents",
+        summary: "List agent threads currently counted as active",
+        usage: AGENTS_HELP,
+      },
+      {
         name: "seed-demo",
         summary: "Create sample folders, projects, labels, tasks, and comments",
         usage: "bb tasks seed-demo --yes [--json]",
@@ -2103,6 +2138,9 @@ export function registerTasksCli(
             break;
           case "threads":
             stdout = await runThreads(domain, rest);
+            break;
+          case "agents":
+            stdout = await runAgents(domain, rest);
             break;
           case "seed-demo": {
             const args = parseArgs(rest);

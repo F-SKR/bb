@@ -240,9 +240,16 @@ export function useMentionItems() {
   );
 }
 
-export function useActiveTasks() {
+const activeAgentsSnapshot = {
+  name: "active-agents",
+  schema: tasksRpcContract.activeAgents.output,
+};
+
+export function useActiveAgents() {
   return useTasksQuery(
-    async (rpc) => listAllTasks(rpc, { activeOnly: true }),
-    ["tasks:changed", "threads:changed"],
+    async (rpc) => rpc.call("activeAgents", null),
+    ["tasks:changed", "projects:changed", "threads:changed"],
+    [],
+    { snapshot: activeAgentsSnapshot },
   );
 }

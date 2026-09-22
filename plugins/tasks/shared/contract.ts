@@ -31,6 +31,31 @@ export const TASK_THREAD_LIVE_STATUSES = [
   "failed",
 ] as const;
 
+export const ACTIVE_AGENT_STATES = [
+  "running",
+  "queued",
+  "starting",
+  "idle",
+  "finished",
+  "stale",
+  "unknown",
+] as const;
+
+export const ACTIVE_AGENT_MODEL_EVIDENCE = [
+  "current-turn",
+  "queued",
+  "last-turn",
+  "none",
+] as const;
+
+export const ACTIVE_AGENT_BLOCKER_KINDS = [
+  "interaction",
+  "plugin",
+  "host-offline",
+  "failed-dispatch",
+  "thread-error",
+] as const;
+
 export const PRESET_ENVIRONMENT_KINDS = [
   "project-default",
   "new-worktree",
@@ -192,6 +217,41 @@ const taskThreadSchema = z
     presetName: z.string(),
     title: z.string(),
     liveStatus: z.enum(TASK_THREAD_LIVE_STATUSES),
+    attachedAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .strict();
+
+const activeAgentModelSchema = z
+  .object({
+    id: z.string().nullable(),
+    displayName: z.string(),
+    evidence: z.enum(ACTIVE_AGENT_MODEL_EVIDENCE),
+  })
+  .strict();
+
+const activeAgentBlockerSchema = z
+  .object({
+    kind: z.enum(ACTIVE_AGENT_BLOCKER_KINDS),
+    detail: z.string().nullable(),
+  })
+  .strict();
+
+const activeAgentSchema = z
+  .object({
+    id: idSchema,
+    taskId: idSchema,
+    taskKey: z.string(),
+    taskTitle: z.string(),
+    projectId: idSchema,
+    threadId: z.string().startsWith("thr_"),
+    providerId: z.string().nullable(),
+    presetName: z.string(),
+    title: z.string(),
+    state: z.enum(ACTIVE_AGENT_STATES),
+    detail: z.string().nullable(),
+    model: activeAgentModelSchema,
+    blocker: activeAgentBlockerSchema.nullable(),
     attachedAt: z.string(),
     updatedAt: z.string(),
   })
@@ -718,6 +778,16 @@ export const tasksRpcContract = defineRpcContract({
       })
       .strict(),
   },
+  activeAgents: {
+    input: z.null(),
+    output: z
+      .object({
+        agents: z.array(activeAgentSchema),
+        taskTotal: z.number().int().nonnegative(),
+        revision: z.string(),
+      })
+      .strict(),
+  },
 });
 
 export type TasksRpcContract = typeof tasksRpcContract;
@@ -732,6 +802,13 @@ export type CommentProvider = z.infer<typeof commentProviderSchema>;
 export type DisplayComment = z.infer<typeof displayCommentSchema>;
 export type Attachment = z.infer<typeof attachmentSchema>;
 export type TaskThread = z.infer<typeof taskThreadSchema>;
+export type ActiveAgentState = (typeof ACTIVE_AGENT_STATES)[number];
+export type ActiveAgentModel = z.infer<typeof activeAgentModelSchema>;
+export type ActiveAgentBlocker = z.infer<typeof activeAgentBlockerSchema>;
+export type ActiveAgent = z.infer<typeof activeAgentSchema>;
+export type ActiveAgentsSnapshot = z.infer<
+  (typeof tasksRpcContract)["activeAgents"]["output"]
+>;
 export type TaskPullRequest = z.infer<typeof taskPullRequestSchema>;
 export type Preset = z.infer<typeof presetSchema>;
 export type TasksDomainError = z.infer<typeof tasksDomainErrorSchema>;
