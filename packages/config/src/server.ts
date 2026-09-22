@@ -21,6 +21,7 @@ import {
   BB_INFERENCE_FALLBACK_ENV,
   BB_INFERENCE_ENV,
   BB_MARKETPLACE_URL_ENV,
+  BB_OPERATOR_TOKEN_FILE_ENV,
   BB_POSTHOG_API_KEY_ENV,
   BB_SERVER_BIND_HOST_ENV,
   BB_SERVER_LAUNCH_ID_ENV,
@@ -60,6 +61,7 @@ export interface ServerConfig
   BB_INFERENCE_FALLBACK: string;
   BB_POSTHOG_API_KEY: string;
   BB_MARKETPLACE_URL: string;
+  BB_OPERATOR_TOKEN_FILE?: string;
   BB_SERVER_BIND_HOST: ServerBindHost;
   BB_SERVER_LAUNCH_ID?: string;
   BB_TELEMETRY: boolean;
@@ -207,6 +209,15 @@ export function loadServerConfig(
     value: readOptionalEnvVar({
       context: loader.context,
       definition: BB_SERVER_LAUNCH_ID_ENV,
+      env: loader.env,
+    }),
+  });
+  assignIfDefined({
+    key: "BB_OPERATOR_TOKEN_FILE",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_OPERATOR_TOKEN_FILE_ENV,
       env: loader.env,
     }),
   });

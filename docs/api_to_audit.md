@@ -1,5 +1,52 @@
 # APIs To Audit
 
+## `operatorOnly` on `PluginRpcMethodContract`
+
+**What it does.** Marks one rpc contract method as reserved for the
+authenticated bb operator. The host verifies the `x-bb-operator-token`
+request header against the server's operator token (data dir file
+`operator-token`) with a timing-safe comparison and refuses every other
+caller with 403 `{ ok: false, error: { code: "operator_auth_required" } }`
+before the handler runs. Allowed and refused operator-only invocations are
+appended to `operator-audit.jsonl` in the data dir. The testing fake host
+mirrors the gate: `callRpc` refuses an operator-only method unless it is
+passed `{ asOperator: true }`.
+
+**Audit before stabilizing.**
+
+1. Confirm header-based operator authentication is the right long-term
+   model versus a session or login concept for the bb app.
+2. Decide whether the operator gate should also cover plugin HTTP routes
+   (`bb.http.route`) with an `"operator"` auth mode beside `"local"`,
+   `"token"`, and `"none"`.
+3. Confirm the JSONL audit file format, location, and the absence of
+   retention/rotation are acceptable, or whether the audit belongs in a
+   queryable store.
+4. Confirm refusal semantics: 403 with `operator_auth_required`, the audit
+   write failing open (logged, request continues), and argv-prefix matching
+   for the CLI companion surface.
+
+## `bb.cli` `experimental_operatorArgv`
+
+**What it does.** Registers argv prefixes (space-separated, for example
+`"preset create"`) on the plugin's `bb <name>` command that only the
+authenticated operator may invoke. Before running the command, the host
+compares the incoming argv against the prefixes and, on a match, requires
+the `x-bb-operator-token` header; without it the invocation is refused with
+403 `operator_auth_required` and never reaches plugin code. Audited in the
+same `operator-audit.jsonl` trail as the rpc gate. The testing fake host
+mirrors the gate on `runCli` with the same `{ asOperator: true }` opt-in.
+
+**Audit before stabilizing.**
+
+1. Confirm argv-prefix matching (exact segment prefix, no flags awareness)
+   is expressive enough for real plugin command shapes.
+2. Decide whether the declaration belongs in the plugin manifest instead of
+   the registration call, so operators can read the operator-only surface
+   list without executing plugin code.
+3. Confirm refusal output shape: HTTP 403 with `{ ok: false, error }`, which
+   the `bb` CLI prints as a stderr line with exit code 1.
+
 ## `bb.http.experimental_websocket`
 
 **What it does.** Registers an exact-path WebSocket upgrade in the plugin's

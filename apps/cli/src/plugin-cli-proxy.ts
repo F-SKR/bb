@@ -375,11 +375,17 @@ export async function runPluginCliCommand(
   }
   const threadId = resolveContextThreadId();
   const projectId = resolveContextProjectId();
+  const operatorToken = process.env.BB_OPERATOR_TOKEN?.trim() ?? "";
   const response = await cliFetch(
     `${baseUrl}/api/v1/plugins/${encodeURIComponent(pluginId)}/cli`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(operatorToken.length > 0
+          ? { "x-bb-operator-token": operatorToken }
+          : {}),
+      },
       body: JSON.stringify({
         argv: resolvedArgv,
         cwd: process.cwd(),

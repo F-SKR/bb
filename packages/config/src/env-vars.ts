@@ -87,6 +87,13 @@ function parseNonEmptyStringEnvValue(args: EnvVarParseArgs): string {
   return args.value;
 }
 
+function parseOptionalNonEmptyStringEnvValue(
+  args: EnvVarParseArgs,
+): string | undefined {
+  const trimmedValue = args.value.trim();
+  return trimmedValue.length > 0 ? trimmedValue : undefined;
+}
+
 function parsePortEnvValue(args: EnvVarParseArgs): number {
   return parsePortValue({
     name: args.name,
@@ -195,6 +202,13 @@ export const BB_SERVER_LAUNCH_ID_ENV = defineEnvVar<string>({
     "Internal per-spawn identity the bb-app launcher hands its server child. The server echoes it on /health so the launcher can tell its own child apart from another bb server that already owns the port.",
   name: "BB_SERVER_LAUNCH_ID",
   parse: parseNonEmptyStringEnvValue,
+});
+
+export const BB_OPERATOR_TOKEN_FILE_ENV = defineEnvVar<string | undefined>({
+  description:
+    "Filesystem path holding the operator token for operator-reserved plugin surfaces. Point it at a location the deployment protects from worker processes (owned by the server's own user, mode 0600); when it is unreadable the server refuses operator-reserved mutations instead of falling back to a token in the shared data dir.",
+  name: "BB_OPERATOR_TOKEN_FILE",
+  parse: parseOptionalNonEmptyStringEnvValue,
 });
 
 export const BB_APP_SURFACE_ENV = defineEnvVar<AppSurface>({

@@ -283,6 +283,75 @@ newline and the submit button sends.
 iPadOS WebKit additionally preserves the Enter and Command+Enter shortcuts
 above for a connected Magic Keyboard.
 
+## Operator access
+
+Some plugin surfaces are reserved for the human operator. Plugins declare
+them with `operatorOnly: true` on an rpc contract method (for example the
+Tasks plugin's `createPreset`, `updatePreset`, and `deletePreset`) or with
+`experimental_operatorArgv` argv prefixes on its `bb` command (for example
+`bb tasks preset create|update|delete`). The bb server verifies every such
+request against the server's operator token and refuses all other callers
+with 403 `operator_auth_required` before any plugin code runs. Reading
+presets and dispatching work with an existing preset stay open to agents,
+plugins, and the CLI.
+
+The server creates the token on first start as `operator-token` inside its
+data dir (a 32-byte hex secret, file mode 0600) and never serves it over any
+endpoint. Present it with:
+
+- The bb app: Settings → Operator access stores it in browser localStorage
+  under `bb.operatorToken`; plugin rpc calls then carry it automatically.
+- The `bb` CLI: export `BB_OPERATOR_TOKEN` in your own shell before running
+  an operator-only command.
+
+Do not put `BB_OPERATOR_TOKEN` in global shell profiles, thread environment
+providers, or any other configuration that agent sessions inherit: an
+exported token is a reusable credential. Rotation is editing the
+`operator-token` file and restarting the server (the token is read once per
+server run); rotate it whenever it may have leaked. Every allowed and refused
+operator-only invocation is appended to `operator-audit.jsonl` in the data
+dir with the authenticated actor, time, surface, action, and attempted
+fields — never the token itself.
+
+### Deployment prerequisite for real enforcement
+
+The token authenticates a caller that can present the secret; it does not
+elevate Unix identity. On the default setup the token lives in the data dir,
+which every process running as the server's user can read — so on a host
+where agent workers share the server's uid, the data-dir token is NOT
+enforcement against those workers, and the server logs a warning saying so
+at startup. It is enforcement against every caller that cannot read the
+machine's files: other uids, other machines, and the sanctioned paths'
+identity rules.
+
+To close the shared-uid gap, deploy with a distinct restricted worker
+identity (or an equivalent sandbox) and set `BB_OPERATOR_TOKEN_FILE` to a
+path only the server's identity can read:
+
+- The worker identity must not be able to read the credential file, read the
+  server process's memory or environment, or write the server's data dir
+  (control-plane data). A dedicated uid for the server with the token file
+  owned by it, mode 0600, satisfies all three; run the workers as a
+  different uid.
+- The operator issues the token there once (for example
+  `umask 077 && openssl rand -hex 32 > "$BB_OPERATOR_TOKEN_FILE"`) and
+  pastes the same value into Settings → Operator access or exports it as
+  `BB_OPERATOR_TOKEN` in their own shell.
+
+`BB_OPERATOR_TOKEN_FILE` is read-only by design: the operator issues and
+rotates the credential, so the server never mints or replaces it. A missing,
+empty, or unreadable file fails closed — operator-reserved surfaces refuse
+every caller with the reason until the file is restored; nothing falls back
+to a token in the data dir. With the distinct worker identity in place this
+refusal only happens when the deployment is actually broken, which is the
+point: the gate cannot silently degrade to a secret workers can read.
+
+[ops/operator-isolation/](../ops/operator-isolation/README.md) ships this
+boundary as an installable configuration: systemd units that run the
+control plane as `bb-control` and the host daemon with all agent workers as
+`bb-worker`, with reproducible setup, rollback, and a verification script
+that exercises the actual worker denial against the live deployment.
+
 ## Keyboard Shortcuts
 
 `Mod+Shift+P` opens the quick palette: type to filter, then run a command with

@@ -67,6 +67,7 @@ import { ProjectsSettingsSection } from "@/components/settings/ProjectsSettingsS
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
+import { OperatorAccessSettingsSection } from "@/components/settings/OperatorAccessSettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -1275,6 +1276,8 @@ export function SettingsView() {
     );
   } else if (activeSection === "marketplaces") {
     content = <MarketplacesSettingsSection />;
+  } else if (activeSection === "operator") {
+    content = <OperatorAccessSettingsSection />;
   } else if (activeSection === "community") {
     content = <CommunitySettingsSection />;
   } else if (activeSection === "archived") {

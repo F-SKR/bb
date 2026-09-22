@@ -464,6 +464,7 @@ describe("public host management", () => {
       const revokeRecord = {
         inputSchema: z.object({ machineId: z.string() }),
         outputSchema: z.object({ ok: z.literal(true) }),
+        operatorOnly: false,
         handler: revokeHandler,
       };
       vi.spyOn(harness.pluginService, "getRpcHandler").mockReturnValue({

@@ -1989,6 +1989,11 @@ export function registerTasksCli(
     name: "tasks",
     summary:
       "Create and manage task-tracker projects, tasks, labels, and comments",
+    experimental_operatorArgv: [
+      "preset create",
+      "preset update",
+      "preset delete",
+    ],
     commands: [
       {
         name: "status",

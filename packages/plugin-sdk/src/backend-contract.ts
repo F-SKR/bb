@@ -855,6 +855,15 @@ export interface PluginCliRegistration {
   /** Subcommand metadata rendered in help and the plugin-commands skill
    * without executing plugin code. Parsing argv is plugin-owned. */
   commands?: PluginCliCommandInfo[];
+  /**
+   * Reserve argv prefixes for the authenticated bb operator. Each entry is a
+   * space-separated argv prefix (for example `"preset create"`); an invocation
+   * whose argv starts with one of them is refused by the host with 403
+   * `operator_auth_required` unless the request carries the server's operator
+   * token in the `x-bb-operator-token` header. The host checks this before
+   * `run` executes, so a refused invocation never reaches plugin code.
+   */
+  experimental_operatorArgv?: readonly string[];
   run(
     argv: string[],
     ctx: PluginCliContext,

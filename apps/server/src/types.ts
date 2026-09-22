@@ -34,6 +34,7 @@ export interface ServerRuntimeConfig {
   isDevelopment: boolean;
   marketplaceUrl: string;
   openAiApiKey: string;
+  operatorTokenFile?: string;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;
   transcriptionModel: string;
